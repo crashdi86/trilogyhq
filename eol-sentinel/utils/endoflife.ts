@@ -21,13 +21,38 @@ export interface ComponentEOLStatus {
  */
 export async function fetchEOLData(slug: string): Promise<EndOfLifeCycle[]> {
   try {
-    const response = await fetch(`https://endoflife.date/api/${slug}.json`)
+    // Create abort controller for timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+    const response = await fetch(`https://endoflife.date/api/${slug}.json`, {
+      signal: controller.signal,
+    })
+    
+    clearTimeout(timeoutId)
+    
     if (!response.ok) {
-      throw new Error(`Failed to fetch EOL data for ${slug}`)
+      // Don't throw error, just return empty array for invalid slugs
+      if (response.status === 404) {
+        console.warn(`No EOL data found for slug: ${slug}`)
+      } else {
+        console.warn(`Failed to fetch EOL data for slug: ${slug} (Status: ${response.status})`)
+      }
+      return []
     }
-    return await response.json()
-  } catch (error) {
-    console.error(`Error fetching EOL data for ${slug}:`, error)
+    
+    const data = await response.json()
+    // Ensure we return an array
+    return Array.isArray(data) ? data : []
+  } catch (error: any) {
+    // Handle timeout or network errors gracefully
+    if (error.name === 'AbortError') {
+      console.warn(`Request timeout for slug: ${slug}`)
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.warn(`Network error fetching EOL data for ${slug}`)
+    } else {
+      console.warn(`Error fetching EOL data for ${slug}:`, error.message || error)
+    }
     return []
   }
 }

@@ -13,7 +13,6 @@ interface AddComponentModalProps {
 // Common API slugs from endoflife.date
 const COMMON_SLUGS = [
   { value: 'mssqlserver', label: 'Microsoft SQL Server' },
-  { value: 'oracle', label: 'Oracle Database' },
   { value: 'python', label: 'Python' },
   { value: 'nodejs', label: 'Node.js' },
   { value: 'java', label: 'Java' },
@@ -165,13 +164,16 @@ export default function AddComponentModal({
             return b.localeCompare(a)
           })
         setVersions(versionList)
+        setError(null) // Clear any previous errors
       } else {
         setVersions([])
-        setError('No versions found for this slug')
+        // Don't show error for empty results - just inform user
+        setError(null)
       }
-    } catch (err) {
+    } catch (err: any) {
       setVersions([])
-      setError('Failed to load versions. Please check the slug.')
+      // Only show error if it's not already handled by fetchEOLData
+      setError(null) // fetchEOLData already handles errors gracefully
     } finally {
       setLoadingVersions(false)
     }
