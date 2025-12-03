@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client'
 interface Product {
   id: string
   name: string
+  logo_url: string | null
   arr: number | null
   cost: number | null
   customer_count: number | null
@@ -36,6 +37,8 @@ export default function EditProductDetailsModal({
   const [documents, setDocuments] = useState(product.documents || '')
   const [supportUrl, setSupportUrl] = useState(product.support_url || '')
   const [note, setNote] = useState(product.note || '')
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(product.logo_url)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
@@ -49,7 +52,21 @@ export default function EditProductDetailsModal({
     setDocuments(product.documents || '')
     setSupportUrl(product.support_url || '')
     setNote(product.note || '')
+    setLogoPreview(product.logo_url)
+    setLogoFile(null)
   }, [product])
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setLogoFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,8 +79,35 @@ export default function EditProductDetailsModal({
     setError(null)
 
     try {
+      let logoUrl: string | null = product.logo_url
+
+      // Upload new logo if provided
+      if (logoFile) {
+        const fileExt = logoFile.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+        const filePath = `logos/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('logos')
+          .upload(filePath, logoFile, {
+            cacheControl: '3600',
+            upsert: false,
+          })
+
+        if (uploadError) {
+          throw new Error('Failed to upload logo: ' + uploadError.message)
+        }
+
+        // Get public URL
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('logos').getPublicUrl(filePath)
+        logoUrl = publicUrl
+      }
+
       const updateData: any = {
         name: name.trim(),
+        logo_url: logoUrl,
         credentials: credentials.trim() || null,
         documents: documents.trim() || null,
         support_url: supportUrl.trim() || null,
@@ -135,6 +179,31 @@ export default function EditProductDetailsModal({
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-black"
             />
+          </div>
+
+          <div>
+            <label
+              htmlFor="logo-upload"
+              className="block text-sm font-medium text-black mb-1"
+            >
+              Logo (Optional)
+            </label>
+            <input
+              id="logo-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+            {logoPreview && (
+              <div className="mt-2">
+                <img
+                  src={logoPreview}
+                  alt="Logo preview"
+                  className="w-24 h-24 object-contain border border-gray-300 rounded"
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-4">

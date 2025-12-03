@@ -32,6 +32,17 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // Validate email domain for authenticated users
+  const ALLOWED_EMAIL_DOMAIN = '@trilogy.com'
+  if (user?.email && !user.email.toLowerCase().endsWith(ALLOWED_EMAIL_DOMAIN.toLowerCase())) {
+    // Sign out user if they don't have a trilogy.com email
+    await supabase.auth.signOut()
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('error', encodeURIComponent(`Only ${ALLOWED_EMAIL_DOMAIN} email addresses are allowed`))
+    return NextResponse.redirect(url)
+  }
+
   // Protect dashboard routes
   if (request.nextUrl.pathname.startsWith('/dashboard')) {
     if (!user) {

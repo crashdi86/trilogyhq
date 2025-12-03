@@ -25,9 +25,11 @@ export default function StatsCards() {
         .from('products')
         .select('id')
 
+      // Only fetch components linked to products (same logic as EOLTrackerTable)
       const { data: components } = await supabase
         .from('components')
-        .select('*')
+        .select('id, slug, version, manual_eol_date, product_id')
+        .not('product_id', 'is', null) // Only components linked to products
 
       // Calculate EOL status for components
       let expired = 0
@@ -35,29 +37,48 @@ export default function StatsCards() {
 
       if (components) {
         for (const component of components) {
-          try {
-            const response = await fetch(
-              `https://endoflife.date/api/${component.slug}.json`
-            )
-            if (response.ok) {
-              const cycles = await response.json()
-              const cycle = cycles.find((c: any) => c.cycle === component.version)
-              if (cycle?.eol) {
-                const eolDate = new Date(cycle.eol)
-                const today = new Date()
-                const daysRemaining = Math.ceil(
-                  (eolDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-                )
+          let daysRemaining: number | null = null
 
-                if (daysRemaining < 0) {
-                  expired++
-                } else if (daysRemaining < 365) {
-                  warning++
+          // Check manual EOL date first
+          if (component.manual_eol_date) {
+            const eolDate = new Date(component.manual_eol_date)
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            eolDate.setHours(0, 0, 0, 0)
+            daysRemaining = Math.ceil(
+              (eolDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+            )
+          } else if (component.slug && component.slug !== 'manual') {
+            // Fetch from API for non-manual components
+            try {
+              const response = await fetch(
+                `https://endoflife.date/api/${component.slug}.json`
+              )
+              if (response.ok) {
+                const cycles = await response.json()
+                const cycle = cycles.find((c: any) => c.cycle === component.version)
+                if (cycle?.eol) {
+                  const eolDate = new Date(cycle.eol)
+                  const today = new Date()
+                  today.setHours(0, 0, 0, 0)
+                  eolDate.setHours(0, 0, 0, 0)
+                  daysRemaining = Math.ceil(
+                    (eolDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+                  )
                 }
               }
+            } catch (err) {
+              // Skip invalid components
             }
-          } catch (err) {
-            // Skip invalid components
+          }
+
+          // Categorize based on days remaining
+          if (daysRemaining !== null) {
+            if (daysRemaining < 0) {
+              expired++
+            } else if (daysRemaining < 365) {
+              warning++
+            }
           }
         }
       }

@@ -33,12 +33,26 @@ interface ComponentWithEOL extends Component {
 
 export default function EOLTrackerTable() {
   const [components, setComponents] = useState<ComponentWithEOL[]>([])
+  const [allComponents, setAllComponents] = useState<ComponentWithEOL[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [selectedProductId, setSelectedProductId] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    // Filter components based on selected product
+    if (selectedProductId === 'all') {
+      setComponents(allComponents)
+    } else {
+      setComponents(
+        allComponents.filter((c) => c.product_id === selectedProductId)
+      )
+    }
+  }, [selectedProductId, allComponents])
 
   const loadData = async () => {
     setLoading(true)
@@ -50,10 +64,11 @@ export default function EOLTrackerTable() {
 
       if (productsError) throw productsError
 
-      // Fetch all components
+      // Fetch all components linked to products (not standalone manual components)
       const { data: componentsData, error: componentsError } = await supabase
         .from('components')
         .select('id, product_id, name, slug, version, manual_eol_date')
+        .not('product_id', 'is', null) // Only select components linked to a product
 
       if (componentsError) throw componentsError
 
@@ -132,6 +147,10 @@ export default function EOLTrackerTable() {
         return a.daysRemaining - b.daysRemaining
       })
 
+      setAllComponents(componentsWithEOL)
+      setProducts(products || [])
+      
+      // Apply initial filter (will be handled by useEffect, but set initial state)
       setComponents(componentsWithEOL)
     } catch (error) {
       console.error('Error loading EOL data:', error)
@@ -160,6 +179,40 @@ export default function EOLTrackerTable() {
     return `${years} year${years !== 1 ? 's' : ''}, ${remainingDays} days`
   }
 
+  const exportToCSV = () => {
+    // Prepare CSV data
+    const headers = ['Product', 'Component', 'Version', 'EOL Date', 'Time Remaining', 'Status']
+    const rows = components.map((component) => [
+      component.productName,
+      component.name,
+      component.version,
+      component.eolDate
+        ? new Date(component.eolDate).toLocaleDateString()
+        : 'N/A',
+      formatTimeRemaining(component.daysRemaining),
+      component.status.toUpperCase(),
+    ])
+
+    // Create CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) =>
+        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+      ),
+    ].join('\n')
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `eol-tracker-${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -168,19 +221,51 @@ export default function EOLTrackerTable() {
     )
   }
 
-  if (components.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">
-          No components found. Add components to products to see EOL tracking.
-        </p>
-      </div>
-    )
-  }
-
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-4">
+          <label
+            htmlFor="product-filter"
+            className="text-sm font-medium text-gray-700"
+          >
+            Filter by Product:
+          </label>
+          <select
+            id="product-filter"
+            value={selectedProductId}
+            onChange={(e) => setSelectedProductId(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white text-black text-sm"
+          >
+            <option value="all">All Products</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={exportToCSV}
+          disabled={components.length === 0}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <i className="fa-solid fa-download mr-2"></i>
+          Export CSV
+        </button>
+      </div>
+
+      {components.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500">
+            {selectedProductId === 'all'
+              ? 'No components found. Add components to products to see EOL tracking.'
+              : 'No components found for the selected product.'}
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -243,6 +328,8 @@ export default function EOLTrackerTable() {
           ))}
         </tbody>
       </table>
+        </div>
+      )}
     </div>
   )
 }

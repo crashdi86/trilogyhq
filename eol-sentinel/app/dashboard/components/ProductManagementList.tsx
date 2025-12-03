@@ -83,6 +83,15 @@ export default function ProductManagementList() {
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
+                  {product.logo_url && (
+                    <div className="w-12 h-12 relative flex-shrink-0">
+                      <img
+                        src={product.logo_url}
+                        alt={product.name}
+                        className="w-full h-full object-contain rounded-lg"
+                      />
+                    </div>
+                  )}
                   <h3 className="text-xl font-semibold text-gray-900">
                     {product.name}
                   </h3>
